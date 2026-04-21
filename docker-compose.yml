@@ -1,0 +1,35 @@
+version: '3.8'
+
+services:
+  backend:
+    build:
+      context: .
+      dockerfile: Dockerfile.backend
+    ports:
+      - "5000:5000"
+    networks:
+      - traffic-net
+
+  sender:
+    build:
+      context: .
+      dockerfile: Dockerfile.sender
+    depends_on:
+      - backend
+    networks:
+      - traffic-net
+
+  frontend:
+    build:
+      context: .
+      dockerfile: Dockerfile.frontend
+    ports:
+      - "8080:80"
+    depends_on:
+      - backend
+    networks:
+      - traffic-net
+
+networks:
+  traffic-net:
+    driver: bridge

@@ -1,0 +1,637 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <title>Traffic Visualizer</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, sans-serif;
+            overflow: hidden;
+            background-color: #0a0a2a;
+        }
+
+        /* data panel at top right corner */
+        .dashboard {
+            position: absolute;
+            top: 20px;
+            right: 20px;
+            background: rgba(0, 0, 0, 0.85);
+            backdrop-filter: blur(12px);
+            border-radius: 16px;
+            padding: 20px;
+            color: white;
+            z-index: 100;
+            min-width: 280px;
+            border: 1px solid rgba(255,255,255,0.1);
+        }
+
+        .dashboard h2 {
+            margin-bottom: 16px;
+            font-size: 18px;
+            font-weight: 600;
+            background: linear-gradient(135deg, #fff, #3b82f6);
+            -webkit-background-clip: text;
+            background-clip: text;
+            color: transparent;
+        }
+
+        .stat-card {
+            background: rgba(255,255,255,0.05);
+            border-radius: 12px;
+            padding: 12px;
+            margin-bottom: 12px;
+        }
+
+        .stat-row {
+            display: flex;
+            justify-content: space-between;
+            margin: 8px 0;
+        }
+
+        .stat-label {
+            color: #aaa;
+            font-size: 13px;
+        }
+
+        .stat-value {
+            font-weight: bold;
+            font-size: 16px;
+            color: #4caf50;
+        }
+
+        .suspicious-value {
+            color: #ff5555;
+        }
+
+        .section-title {
+            margin-top: 16px;
+            margin-bottom: 10px;
+            font-size: 12px;
+            color: #888;
+            font-weight: 600;
+            text-transform: uppercase;
+        }
+
+        .top-ip-item {
+            display: flex;
+            justify-content: space-between;
+            margin: 6px 0;
+            padding: 6px 8px;
+            background: rgba(255,255,255,0.03);
+            border-radius: 8px;
+            font-size: 12px;
+            font-family: monospace;
+        }
+
+        .top-ip-ip {
+            color: #3b82f6;
+        }
+
+        .top-ip-count {
+            color: #aaa;
+        }
+
+        .chart-container {
+            margin-top: 16px;
+            display: flex;
+            justify-content: center;
+        }
+
+        canvas {
+            display: block;
+        }
+
+        /* tooltip that appears when hovering over a point */
+        .custom-tooltip {
+            position: absolute;
+            background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);
+            color: white;
+            padding: 12px 18px;
+            border-radius: 12px;
+            font-size: 13px;
+            font-family: monospace;
+            pointer-events: none;
+            z-index: 200;
+            box-shadow: 0 4px 20px rgba(0,0,0,0.4);
+            border-left: 4px solid #3b82f6;
+            backdrop-filter: blur(8px);
+            white-space: nowrap;
+        }
+
+        .custom-tooltip .tooltip-ip {
+            font-size: 14px;
+            font-weight: bold;
+            color: #3b82f6;
+            margin-bottom: 6px;
+        }
+
+        .custom-tooltip .tooltip-status {
+            display: inline-block;
+            padding: 2px 8px;
+            border-radius: 20px;
+            font-size: 10px;
+            font-weight: bold;
+            margin-top: 6px;
+        }
+
+        .custom-tooltip .tooltip-status.normal {
+            background: rgba(76, 175, 80, 0.2);
+            color: #4caf50;
+            border: 1px solid #4caf50;
+        }
+
+        .custom-tooltip .tooltip-status.suspicious {
+            background: rgba(255, 85, 85, 0.2);
+            color: #ff5555;
+            border: 1px solid #ff5555;
+        }
+
+        .custom-tooltip .tooltip-coord {
+            font-size: 10px;
+            color: #aaa;
+            margin-top: 6px;
+        }
+
+        .debug {
+            position: absolute;
+            bottom: 20px;
+            left: 20px;
+            background: rgba(0,0,0,0.6);
+            color: #0f0;
+            font-family: monospace;
+            font-size: 11px;
+            padding: 6px 12px;
+            border-radius: 8px;
+            z-index: 100;
+        }
+
+        .status-indicator {
+            display: inline-block;
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            background: #4caf50;
+            margin-right: 6px;
+        }
+    </style>
+</head>
+<body>
+    <div class="dashboard">
+        <h2>Traffic Intelligence</h2>
+
+        <div class="stat-card">
+            <div class="stat-row">
+                <span class="stat-label">Total Packets</span>
+                <span class="stat-value" id="total">0</span>
+            </div>
+            <div class="stat-row">
+                <span class="stat-label">Active IPs</span>
+                <span class="stat-value" id="activeIps">0</span>
+            </div>
+        </div>
+
+        <div class="stat-card">
+            <div class="stat-row">
+                <span class="stat-label">Normal (Green)</span>
+                <span class="stat-value" id="normal">0</span>
+            </div>
+            <div class="stat-row">
+                <span class="stat-label">Suspicious (Red)</span>
+                <span class="stat-value suspicious-value" id="suspicious">0</span>
+            </div>
+        </div>
+
+        <div class="section-title">Top Active IPs</div>
+        <div id="topIps"></div>
+
+        <div class="section-title">Normal vs Suspicious</div>
+        <div class="chart-container">
+            <canvas id="pieChart" width="180" height="180" style="width: 180px; height: 180px;"></canvas>
+        </div>
+    </div>
+
+    <div class="debug">
+        <span class="status-indicator"></span>
+        <span id="debugText">Connecting to server...</span>
+    </div>
+
+    <script type="importmap">
+        {
+            "imports": {
+                "three": "https://unpkg.com/three@0.128.0/build/three.module.js",
+                "three/addons/": "https://unpkg.com/three@0.128.0/examples/jsm/"
+            }
+        }
+    </script>
+
+    <script type="module">
+        import * as THREE from 'three';
+        import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+
+        // api endpoints
+        const API_POINTS = 'http://backend:5000/api/points';
+        const API_STATS = 'http://backend:5000/api/stats';
+
+        // scene, camera, renderer setup
+        const scene = new THREE.Scene();
+        scene.background = new THREE.Color(0x0a0a2a);
+        scene.fog = new THREE.FogExp2(0x0a0a2a, 0.0005);
+
+        const camera = new THREE.PerspectiveCamera(45, window.innerWidth / window.innerHeight, 0.1, 1000);
+        camera.position.set(0, 0, 14);
+
+        const renderer = new THREE.WebGLRenderer({ antialias: true });
+        renderer.setSize(window.innerWidth, window.innerHeight);
+        renderer.setPixelRatio(window.devicePixelRatio);
+        document.body.appendChild(renderer.domElement);
+
+        // mouse controls for orbit
+        const controls = new OrbitControls(camera, renderer.domElement);
+        controls.enableDamping = true;
+        controls.dampingFactor = 0.05;
+        controls.autoRotate = false;
+        controls.enableZoom = true;
+        controls.zoomSpeed = 1.2;
+        controls.rotateSpeed = 0.8;
+
+        // earth sphere
+        const earthGeometry = new THREE.SphereGeometry(5, 128, 128);
+        const textureLoader = new THREE.TextureLoader();
+        const earthMap = textureLoader.load('https://threejs.org/examples/textures/planets/earth_atmos_2048.jpg');
+        const earthSpecularMap = textureLoader.load('https://threejs.org/examples/textures/planets/earth_specular_2048.jpg');
+        const earthNormalMap = textureLoader.load('https://threejs.org/examples/textures/planets/earth_normal_2048.jpg');
+
+        const earthMaterial = new THREE.MeshPhongMaterial({
+            map: earthMap,
+            specularMap: earthSpecularMap,
+            specular: new THREE.Color('grey'),
+            shininess: 5,
+            normalMap: earthNormalMap
+        });
+
+        const earth = new THREE.Mesh(earthGeometry, earthMaterial);
+        scene.add(earth);
+
+        // cloud layer for visual effect
+        const cloudGeometry = new THREE.SphereGeometry(5.01, 128, 128);
+        const cloudMap = textureLoader.load('https://threejs.org/examples/textures/planets/earth_clouds_1024.png');
+        const cloudMaterial = new THREE.MeshPhongMaterial({
+            map: cloudMap,
+            transparent: true,
+            opacity: 0.1,
+            blending: THREE.AdditiveBlending
+        });
+        const clouds = new THREE.Mesh(cloudGeometry, cloudMaterial);
+        scene.add(clouds);
+
+        // starfield background
+        const starGeometry = new THREE.BufferGeometry();
+        const starPositions = [];
+        for (let i = 0; i < 2500; i++) {
+            starPositions.push((Math.random() - 0.5) * 800);
+            starPositions.push((Math.random() - 0.5) * 800);
+            starPositions.push((Math.random() - 0.5) * 150 - 50);
+        }
+        starGeometry.setAttribute('position', new THREE.BufferAttribute(new Float32Array(starPositions), 3));
+        const starMaterial = new THREE.PointsMaterial({ color: 0xffffff, size: 0.2, transparent: true, opacity: 0.6 });
+        const stars = new THREE.Points(starGeometry, starMaterial);
+        scene.add(stars);
+
+        // lighting
+        const ambientLight = new THREE.AmbientLight(0x333333);
+        scene.add(ambientLight);
+        const mainLight = new THREE.DirectionalLight(0xffffff, 1.2);
+        mainLight.position.set(10, 15, 5);
+        scene.add(mainLight);
+        const fillLight = new THREE.PointLight(0x4466cc, 0.3);
+        fillLight.position.set(-5, 0, 8);
+        scene.add(fillLight);
+
+        // convert lat/lon to 3d coordinates (with longitude inversion)
+        function latLonToVector(lat, lon, radius) {
+            const correctedLon = -lon;
+            const phi = (90 - lat) * Math.PI / 180;
+            const theta = correctedLon * Math.PI / 180;
+            return new THREE.Vector3(
+                radius * Math.sin(phi) * Math.cos(theta),
+                radius * Math.cos(phi),
+                radius * Math.sin(phi) * Math.sin(theta)
+            );
+        }
+
+        // simple marker without any animation
+        function createMarker(lat, lon, suspicious) {
+            const group = new THREE.Group();
+            const pos = latLonToVector(lat, lon, 5.05);
+            group.position.copy(pos);
+
+            const color = suspicious ? 0xff3333 : 0x33ff33;
+
+            const sphereMat = new THREE.MeshStandardMaterial({
+                color: color,
+                emissive: suspicious ? 0x220000 : 0x002200,
+                emissiveIntensity: 0.2
+            });
+            const sphere = new THREE.Mesh(new THREE.SphereGeometry(0.07, 16, 16), sphereMat);
+            group.add(sphere);
+
+            return group;
+        }
+
+        // marker with ip data for hover detection
+        function createDetailedMarker(lat, lon, ip, suspicious) {
+            const group = new THREE.Group();
+            const pos = latLonToVector(lat, lon, 5.05);
+            group.position.copy(pos);
+
+            const color = suspicious ? 0xff3333 : 0x33ff33;
+
+            const sphereMat = new THREE.MeshStandardMaterial({
+                color: color,
+                emissive: suspicious ? 0x220000 : 0x002200,
+                emissiveIntensity: 0.2
+            });
+            const sphere = new THREE.Mesh(new THREE.SphereGeometry(0.07, 16, 16), sphereMat);
+            group.add(sphere);
+
+            group.userData = {
+                ip: ip,
+                suspicious: suspicious,
+                lat: lat,
+                lon: lon
+            };
+
+            return group;
+        }
+
+        let visualMarkers = [];    // markers visible on the globe
+        let hoverMarkers = [];     // markers used for hover detection
+        let markerCache = new Map();
+        let raycaster = new THREE.Raycaster();
+        let mouse = new THREE.Vector2();
+
+        let tooltip = null;
+
+        // create fancy info window
+        function createTooltip() {
+            const div = document.createElement('div');
+            div.className = 'custom-tooltip';
+            div.innerHTML = `
+                <div class="tooltip-ip"></div>
+                <div class="tooltip-status"></div>
+                <div class="tooltip-coord"></div>
+            `;
+            document.body.appendChild(div);
+            return div;
+        }
+
+        function showTooltip(x, y, ip, suspicious, lat, lon) {
+            if (!tooltip) {
+                tooltip = createTooltip();
+            }
+
+            tooltip.querySelector('.tooltip-ip').textContent = ip;
+
+            const statusDiv = tooltip.querySelector('.tooltip-status');
+            statusDiv.textContent = suspicious ? 'Suspicious' : 'Normal';
+            statusDiv.className = 'tooltip-status ' + (suspicious ? 'suspicious' : 'normal');
+
+            tooltip.querySelector('.tooltip-coord').textContent = `Lat: ${lat.toFixed(4)} | Lon: ${lon.toFixed(4)}`;
+
+            tooltip.style.display = 'block';
+            tooltip.style.left = (x + 15) + 'px';
+            tooltip.style.top = (y - 50) + 'px';
+        }
+
+        function hideTooltip() {
+            if (tooltip) {
+                tooltip.style.display = 'none';
+            }
+        }
+
+        // update markers on the globe
+        function updateMarkers(points) {
+            const now = Date.now();
+
+            // clear old hover markers
+            for (let m of hoverMarkers) {
+                scene.remove(m);
+            }
+            hoverMarkers = [];
+
+            // create new hover markers
+            for (let p of points) {
+                const key = `${p.lat.toFixed(4)},${p.lng.toFixed(4)},${p.ip}`;
+                if (markerCache.has(key) && now - markerCache.get(key) < 5000) {
+                    continue;
+                }
+                markerCache.set(key, now);
+
+                const marker = createDetailedMarker(p.lat, p.lng, p.ip, p.suspicious);
+                scene.add(marker);
+                hoverMarkers.push(marker);
+            }
+
+            // visual markers (just dots)
+            const newVisualMarkers = [];
+            for (let p of points) {
+                const marker = createMarker(p.lat, p.lng, p.suspicious);
+                scene.add(marker);
+                newVisualMarkers.push({ marker: marker, time: now });
+            }
+
+            // remove old visual markers (older than 15 seconds)
+            for (let i = visualMarkers.length - 1; i >= 0; i--) {
+                if (now - visualMarkers[i].time > 15000) {
+                    scene.remove(visualMarkers[i].marker);
+                    visualMarkers.splice(i, 1);
+                }
+            }
+
+            visualMarkers.push(...newVisualMarkers);
+
+            // clean up cache
+            for (let [k, t] of markerCache.entries()) {
+                if (now - t > 30000) markerCache.delete(k);
+            }
+        }
+
+        // handle mouse movement over the globe
+        function onMouseMove(event) {
+            mouse.x = (event.clientX / renderer.domElement.clientWidth) * 2 - 1;
+            mouse.y = -(event.clientY / renderer.domElement.clientHeight) * 2 + 1;
+
+            raycaster.setFromCamera(mouse, camera);
+            const intersects = raycaster.intersectObjects(hoverMarkers, true);
+
+            let hit = null;
+            for (let intersect of intersects) {
+                let obj = intersect.object;
+                while (obj.parent) {
+                    if (hoverMarkers.includes(obj)) {
+                        hit = obj;
+                        break;
+                    }
+                    obj = obj.parent;
+                }
+                if (hit) break;
+            }
+
+            if (hit && hit.userData && hit.userData.ip) {
+                showTooltip(
+                    event.clientX,
+                    event.clientY,
+                    hit.userData.ip,
+                    hit.userData.suspicious,
+                    hit.userData.lat,
+                    hit.userData.lon
+                );
+            } else {
+                hideTooltip();
+            }
+        }
+
+        // draw pie chart
+        function drawPieChart(normal, suspicious) {
+            const canvas = document.getElementById('pieChart');
+            const ctx = canvas.getContext('2d');
+            const total = normal + suspicious;
+
+            if (total === 0) {
+                ctx.clearRect(0, 0, canvas.width, canvas.height);
+                ctx.fillStyle = '#555';
+                ctx.font = '11px sans-serif';
+                ctx.fillText('No data', canvas.width/2 - 28, canvas.height/2);
+                return;
+            }
+
+            const normalAngle = (normal / total) * 2 * Math.PI;
+            const centerX = canvas.width / 2;
+            const centerY = canvas.height / 2;
+            const radius = 70;
+
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+            // green slice (normal)
+            ctx.beginPath();
+            ctx.moveTo(centerX, centerY);
+            ctx.arc(centerX, centerY, radius, 0, normalAngle);
+            ctx.fillStyle = '#33ff33';
+            ctx.fill();
+
+            // red slice (suspicious)
+            ctx.beginPath();
+            ctx.moveTo(centerX, centerY);
+            ctx.arc(centerX, centerY, radius, normalAngle, 2 * Math.PI);
+            ctx.fillStyle = '#ff3333';
+            ctx.fill();
+
+            // outline
+            ctx.beginPath();
+            ctx.arc(centerX, centerY, radius, 0, 2 * Math.PI);
+            ctx.strokeStyle = '#fff';
+            ctx.lineWidth = 1.5;
+            ctx.stroke();
+
+            // center circle
+            ctx.beginPath();
+            ctx.arc(centerX, centerY, 35, 0, 2 * Math.PI);
+            ctx.fillStyle = 'rgba(0,0,0,0.8)';
+            ctx.fill();
+            ctx.strokeStyle = '#fff';
+            ctx.stroke();
+
+            // total number in center
+            ctx.fillStyle = '#fff';
+            ctx.font = 'bold 14px sans-serif';
+            ctx.fillText(total, centerX - 10, centerY + 5);
+
+            // percentages
+            ctx.font = '10px sans-serif';
+            ctx.fillStyle = '#33ff33';
+            ctx.fillText(`${Math.round((normal/total)*100)}%`, centerX - 45, centerY - 40);
+            ctx.fillStyle = '#ff3333';
+            ctx.fillText(`${Math.round((suspicious/total)*100)}%`, centerX + 25, centerY - 40);
+        }
+
+        // fetch points from server
+        async function fetchPoints() {
+            try {
+                const res = await fetch(API_POINTS);
+                const data = await res.json();
+                if (data.points) {
+                    updateMarkers(data.points);
+                    document.getElementById('debugText').innerHTML = `Connected | ${visualMarkers.length} points`;
+                }
+            } catch(e) {
+                document.getElementById('debugText').innerHTML = 'Server not running. Run: python app.py';
+            }
+        }
+
+        // fetch statistics from server
+        async function fetchStats() {
+            try {
+                const res = await fetch(API_STATS);
+                const data = await res.json();
+
+                document.getElementById('total').innerText = data.total || 0;
+                document.getElementById('activeIps').innerText = data.active_ips || 0;
+                document.getElementById('normal').innerText = data.normal || 0;
+                document.getElementById('suspicious').innerText = data.suspicious || 0;
+
+                const topDiv = document.getElementById('topIps');
+                if (data.top_ips && data.top_ips.length > 0) {
+                    topDiv.innerHTML = '';
+                    for (let item of data.top_ips) {
+                        topDiv.innerHTML += `
+                            <div class="top-ip-item">
+                                <span class="top-ip-ip">${item.ip}</span>
+                                <span class="top-ip-count">${item.count} packets</span>
+                            </div>
+                        `;
+                    }
+                } else {
+                    topDiv.innerHTML = '<div style="color:#666; text-align:center; padding:10px;">No data</div>';
+                }
+
+                drawPieChart(data.normal || 0, data.suspicious || 0);
+
+            } catch(e) {
+                console.log('Stats error:', e);
+            }
+        }
+
+        // animation loop (just rotate clouds and stars)
+        function animate() {
+            requestAnimationFrame(animate);
+            controls.update();
+            clouds.rotation.y += 0.0005;
+            stars.rotation.y += 0.0002;
+            renderer.render(scene, camera);
+        }
+
+        // attach event handlers
+        window.addEventListener('mousemove', onMouseMove);
+        window.addEventListener('resize', () => {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+        });
+
+        // start everything
+        fetchPoints();
+        fetchStats();
+        setInterval(fetchPoints, 2000);
+        setInterval(fetchStats, 2000);
+        animate();
+
+        console.log('Globe ready');
+    </script>
+</body>
+</html>
