@@ -2,12 +2,12 @@ import csv
 import time
 import requests
 
-CSV_FILE = 'ip_addresses.csv'  # input data file
-URL = 'http://backend:5000/api/package'  # where to send
+CSV_FILE = 'ip_addresses.csv'              # input data file
+URL = 'http://backend:5000/api/package'    # where to send (backend service name in docker)
 
 
-# send one package, return True if successful
 def send_package(pkg):
+    # send one package to backend, return True if successful
     try:
         r = requests.post(URL, json=pkg, timeout=2)
         return r.status_code == 200
@@ -19,7 +19,7 @@ def send_package(pkg):
 def main():
     print('Loading CSV...')
 
-    # read csv file
+    # read all rows from csv file
     with open(CSV_FILE, 'r') as f:
         reader = csv.DictReader(f)
         rows = list(reader)
@@ -28,17 +28,18 @@ def main():
 
     prev_ts = None
 
+    # loop through each package
     for i, row in enumerate(rows):
         ts = int(row['Timestamp'])
 
-        # wait according to timestamps in csv
+        # wait based on timestamp difference from previous package
         if prev_ts is not None:
             wait = ts - prev_ts
             if wait > 0:
                 print(f'Waiting {wait} seconds...')
                 time.sleep(wait)
 
-        # build package from csv row
+        # build package dictionary from csv row
         pkg = {
             'ip': row['ip address'],
             'lat': float(row['Latitude']),
@@ -49,10 +50,11 @@ def main():
 
         print(f'[{i + 1}/{len(rows)}] Sending {pkg["ip"]}...', end=' ')
 
+        # send and show result
         if send_package(pkg):
             print('OK')
         else:
-            print('FAIL')
+            print('FAIL (frontend not ready yet)')
 
         prev_ts = ts
 

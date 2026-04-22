@@ -234,9 +234,9 @@
         import * as THREE from 'three';
         import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 
-        // api endpoints
-        const API_POINTS = 'http://backend:5000/api/points';
-        const API_STATS = 'http://backend:5000/api/stats';
+        // api endpoints - change 'backend' to 'localhost' when running locally
+        const API_POINTS = 'http://localhost:5000/api/points';
+        const API_STATS = 'http://localhost:5000/api/stats';
 
         // scene, camera, renderer setup
         const scene = new THREE.Scene();
@@ -370,7 +370,7 @@
             return group;
         }
 
-        let visualMarkers = [];    // markers visible on the globe
+        let visualMarkers = [];    // markers visible on the globe (never removed)
         let hoverMarkers = [];     // markers used for hover detection
         let markerCache = new Map();
         let raycaster = new THREE.Raycaster();
@@ -415,7 +415,7 @@
             }
         }
 
-        // update markers on the globe
+        // update markers on the globe - points never disappear
         function updateMarkers(points) {
             const now = Date.now();
 
@@ -428,7 +428,7 @@
             // create new hover markers
             for (let p of points) {
                 const key = `${p.lat.toFixed(4)},${p.lng.toFixed(4)},${p.ip}`;
-                if (markerCache.has(key) && now - markerCache.get(key) < 5000) {
+                if (markerCache.has(key)) {
                     continue;
                 }
                 markerCache.set(key, now);
@@ -438,27 +438,22 @@
                 hoverMarkers.push(marker);
             }
 
-            // visual markers (just dots)
-            const newVisualMarkers = [];
+            // visual markers (just dots) - never removed
             for (let p of points) {
-                const marker = createMarker(p.lat, p.lng, p.suspicious);
-                scene.add(marker);
-                newVisualMarkers.push({ marker: marker, time: now });
-            }
-
-            // remove old visual markers (older than 15 seconds)
-            for (let i = visualMarkers.length - 1; i >= 0; i--) {
-                if (now - visualMarkers[i].time > 15000) {
-                    scene.remove(visualMarkers[i].marker);
-                    visualMarkers.splice(i, 1);
+                const key = `${p.lat.toFixed(4)},${p.lng.toFixed(4)}`;
+                let alreadyExists = false;
+                for (let m of visualMarkers) {
+                    if (m.userData && m.userData.key === key) {
+                        alreadyExists = true;
+                        break;
+                    }
                 }
-            }
-
-            visualMarkers.push(...newVisualMarkers);
-
-            // clean up cache
-            for (let [k, t] of markerCache.entries()) {
-                if (now - t > 30000) markerCache.delete(k);
+                if (!alreadyExists) {
+                    const marker = createMarker(p.lat, p.lng, p.suspicious);
+                    marker.userData = { key: key };
+                    scene.add(marker);
+                    visualMarkers.push(marker);
+                }
             }
         }
 
@@ -560,21 +555,21 @@
             ctx.fillText(`${Math.round((suspicious/total)*100)}%`, centerX + 25, centerY - 40);
         }
 
-        // fetch points from server
+        // fetch points from server - every 1 second
         async function fetchPoints() {
             try {
                 const res = await fetch(API_POINTS);
                 const data = await res.json();
                 if (data.points) {
                     updateMarkers(data.points);
-                    document.getElementById('debugText').innerHTML = `Connected | ${visualMarkers.length} points`;
+                    document.getElementById('debugText').innerHTML = `Connected | ${visualMarkers.length} points total`;
                 }
             } catch(e) {
                 document.getElementById('debugText').innerHTML = 'Server not running. Run: python app.py';
             }
         }
 
-        // fetch statistics from server
+        // fetch statistics from server - every 1 second
         async function fetchStats() {
             try {
                 const res = await fetch(API_STATS);
@@ -624,11 +619,11 @@
             renderer.setSize(window.innerWidth, window.innerHeight);
         });
 
-        // start everything
+        // start everything - fetch every 1 second
         fetchPoints();
         fetchStats();
-        setInterval(fetchPoints, 2000);
-        setInterval(fetchStats, 2000);
+        setInterval(fetchPoints, 1000);
+        setInterval(fetchStats, 1000);
         animate();
 
         console.log('Globe ready');

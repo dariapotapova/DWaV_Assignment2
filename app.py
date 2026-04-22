@@ -1,42 +1,23 @@
 from flask import Flask, jsonify, request
 from flask_cors import CORS
 from datetime import datetime
-import threading
-import time
 
 app = Flask(__name__)
 CORS(app)
 
-packages = []  # store received packages here
-is_active = True  # whether server still accepts new packages
-start_time = None  # timestamp of first package
-
-
-# stop accepting packages 10 seconds after first one arrives
-def stop_after_10_seconds():
-    global is_active
-    time.sleep(10)
-    is_active = False
-    print('10 seconds passed. No longer accepting new packages.')
+packages = []  # store all received packages
+is_active = False  # backend starts disabled, enabled when frontend connects
 
 
 # endpoint where sender posts packages
 @app.route('/api/package', methods=['POST'])
 def add_package():
-    global is_active, start_time
+    global is_active
 
-    # start the 10 second timer on first package
-    if start_time is None:
-        start_time = datetime.now()
-        thread = threading.Thread(target=stop_after_10_seconds)
-        thread.daemon = True
-        thread.start()
-        print('Started accepting packages. Will stop after 10 seconds.')
-
-    # reject packages after time limit
+    # only accept packages if frontend has connected
     if not is_active:
-        print('Rejected: Server is no longer accepting packages (10 seconds passed)')
-        return {'status': 'rejected', 'reason': 'time limit exceeded'}, 403
+        print('Rejected: frontend not connected yet')
+        return {'status': 'rejected', 'reason': 'frontend not ready'}, 403
 
     data = request.get_json()
 
@@ -50,13 +31,20 @@ def add_package():
     packages.append(pkg)
 
     print(f'Added: {pkg["ip"]} at ({pkg["lat"]}, {pkg["lon"]}) suspicious={pkg["suspicious"]}')
-    print(f'Total packages: {len(packages)}')
+    print(f'Total packages in storage: {len(packages)}')
     return {'status': 'ok'}, 200
 
 
 # frontend fetches points from here
 @app.route('/api/points', methods=['GET'])
 def get_points():
+    global is_active
+
+    # enable backend when frontend first requests data
+    if not is_active:
+        is_active = True
+        print('Frontend connected. Backend now accepting packages.')
+
     points = []
     for p in packages:
         points.append({
@@ -98,13 +86,12 @@ def get_stats():
 @app.route('/api/status', methods=['GET'])
 def get_status():
     return {
-        'is_active': is_active,
         'packages_received': len(packages),
-        'time_elapsed': (datetime.now() - start_time).seconds if start_time else 0
+        'is_active': is_active
     }, 200
 
 
 if __name__ == '__main__':
     print('Server on http://localhost:5000')
-    print('Will accept packages for 10 seconds only')
+    print('Backend disabled. Waiting for frontend to connect...')
     app.run(host='0.0.0.0', port=5000, debug=True)
